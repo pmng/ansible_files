@@ -1,0 +1,27 @@
+---
+- name: setup
+  hosts: localhost
+  become: false
+  vars:
+  vars_files:
+    - user_def
+  roles:
+  tasks:
+    - name: Setup
+      block: 
+        - name: Debug list dict
+          loop: "{{ new_user }}"
+          ansible.builtin.debug:
+            msg: "name is {{ item['name'] }} group is {{ item['groups'] }} shell is {{ item['shell'] }} test is {{ item['test'] | default(omit) }}"
+          
+        - name: Debug dict 1
+          loop: "{{ lookup('dict',new_user2)}}"
+          ansible.builtin.debug:
+            #var: item | type_debug
+            msg: "name is {{ item['key'] }} group is {{ item['value']['groups'] }} shell is {{ item['value']['shell'] }} test: {{ item['value']['test']| default(omit) }}"
+        - name: Debug dict 2
+          loop: "{{ new_user2 | dict2items }}"
+          ansible.builtin.debug:
+            msg: "name is {{ item['key'] }} group is {{ item['value']['groups'] }} shell is {{ item['value']['shell'] }} test is {{ item['value']['test']|default(omit) }}"
+  handlers:
+...

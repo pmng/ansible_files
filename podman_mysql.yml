@@ -1,0 +1,95 @@
+---
+- name: Setup podman mysql
+  hosts: db
+  become: true
+  vars:
+    package_package:
+      - podman
+  roles:
+    - role: firewall
+      vars:
+        firewalld_port:
+          - 33306/tcp
+  tasks:
+    - name: Install podman
+      ansible.builtin.include_tasks:
+        file: package.yml
+
+    - name: Include password files
+      loop: 
+        - redhat.vault
+        - db.vault
+      ansible.builtin.include_vars:
+        file: "vault/{{ item }}"
+
+    - name: Create database user
+      ansible.builtin.user:
+        name: "{{ db_username }}"
+        password: "{{ db_password | password_hash('sha512') }}"
+        state: present
+
+    - name: Copy ssh key
+      ansible.posix.authorized_key:
+        user: "{{ db_username }}"
+        key: "{{ lookup('file','./id_rsa.pub') }}"
+
+    - name: Create podman mariadb dir
+      ansible.builtin.file:
+        path: "/home/{{ db_username }}/podman/mariadb"
+        owner: "{{ db_username }}"
+        group: "{{ db_username }}"
+        setype: container_file_t
+        mode: '0744'
+        state: directory
+
+    - name: Set sefcontext 
+      community.general.sefcontext:
+        target: "/home/{{ db_username }}/podman(/.*)?"
+        setype: container_file_t
+        state: present
+
+    - name: Container block
+      remote_user: "{{ db_username }}"
+      become: false
+      block: 
+        - name: Podman login
+          loop:
+            - registry.redhat.io
+            - registry.access.redhat.com
+          containers.podman.podman_login:
+            username: "{{ redhat_username }}"
+            password: "{{ redhat_password }}"
+            registry: "{{ item }}"
+        
+        - name: Podman unshare chown
+          shell:
+            "podman unshare chown 27:27 /home/{{ db_username }}/podman/mariadb"
+        
+        - name: Create podman container
+          containers.podman.podman_container:
+            image: registry.redhat.io/rhel9/mariadb-1011
+            env: 
+              MYSQL_PASSWORD: "{{ MYSQL_PASSWORD }}"
+              MYSQL_ROOT_PASSWORD: "{{ MYSQL_ROOT_PASSWORD }}"
+              MYSQL_USER: "{{ MYSQL_USER}}"
+            publish: 33306:3306
+            expose: 3306
+            name: mariadb
+            state: started
+            volume: "/home/{{ db_username }}/podman/mariadb:/var/lib/mysql"
+            detach: true
+            generate_systemd:
+              names: true
+              path: "/home/{{ db_username }}/.config/systemd/user"
+        
+        - name: Enable user systemd 
+          ansible.builtin.shell:
+            systemctl --user daemon-reload; systemctl --user enable container-mariadb.service
+    - name: enable linger
+      ansible.builtin.shell:
+        "loginctl enable-linger {{ db_username }}"
+      tags: linger
+        
+    
+  handlers:
+...

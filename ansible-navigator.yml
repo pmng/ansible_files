@@ -1,0 +1,11 @@
+ansible-navigator:
+  execution-environment:
+    container-engine: podman
+    image: registry.redhat.io/ansible-automation-platform-26/ee-supported-rhel9
+    pull:
+      policy: missing
+      arguments:
+        - "--tls-verify=false"
+  mode: stdout
+  playbook-artifact:
+    enable: false

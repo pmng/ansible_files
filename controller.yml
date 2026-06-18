@@ -1,0 +1,66 @@
+---
+- name: setup
+  hosts: localhost
+  become: true
+  vars:
+    package_package:
+      - httpd
+      - nfs-utils
+    service_service:
+      - httpd
+      - nfs-server
+  roles: 
+    - role: firewall
+      vars:
+        firewalld_service:
+          - http
+          - nfs
+          - mountd
+          - rpc-bind
+  tasks:
+    - name: setup
+      block: 
+        - name: install package
+          include_tasks:
+            file: package.yml
+        - name: mountd
+          mount:
+            src: /dev/sr0
+            path: /mnt/iso
+            state: mounted
+            fstype: iso9660
+        - name: create repo
+          yum_repository:
+            baseurl: /mnt/iso
+            description: "iso {{item}} repo"
+            enabled: true
+            gpgcheck: false
+            file: "{{item}}"
+            name: "{{item}}"
+          loop:
+            - BaseOS
+            - AppStream
+        - name: create httpd repo link
+          file:
+            src: "/mnt/iso/{{item}}"
+            path: "/var/www/html/{{item}}"
+            state: link
+          loop:
+            - BaseOS
+            - AppStream
+        - name: create nfs export dir
+          file:
+            state: directory
+            path: /mnt/nfsexport
+        - name: edit exports
+          lineinfile:
+            path: /etc/exports
+            backup: true
+            regexp: '/mnt/nfsexport 192.168.1.0/24(rw,sync,crossmnt,no_root_squash,all_no_squash)' 
+            line: '/mnt/nfsexport 192.168.1.0/24(rw,sync,crossmnt,no_root_squash,all_no_squash)' 
+
+        - name: start service
+          include_tasks:
+            file: service.yml
+  handlers:
+...

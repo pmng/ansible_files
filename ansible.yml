@@ -1,0 +1,41 @@
+---
+- name: setup ansible hosts
+  hosts: all
+  become: true
+  vars:
+  roles:
+  tasks:
+    - name: setup
+      block: 
+        - name: setup hostname
+          hostname:
+            name: "{{hostname}}"
+        - name: create ansible user
+          user:
+            name: ansible
+            state: present
+        - name: ssh key
+          authorized_key:
+            user: ansible
+            key: "{{lookup('file','/home/pmng/ansible/id_rsa.pub')}}"
+            path: /home/ansible/.ssh/authorized_keys
+        - name: no password sudo
+          copy:
+            dest: /etc/sudoers.d/ansible
+            content: "ansible ALL=(ALL) NOPASSWD: ALL"
+        - name: yum repo
+          yum_repository:
+            baseurl: "http://192.168.1.73/{{item}}"
+            description: "controller {{item}} repo"
+            enabled: true
+            gpgcheck: false
+            file: "{{item}}"
+            name: "{{item}}"
+            state: present
+          loop:
+            - BaseOS
+            - AppStream
+        
+    
+  handlers:
+...

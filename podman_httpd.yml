@@ -1,0 +1,119 @@
+---
+- name: Setup podman httpd
+  hosts: web
+  become: true
+  vars:
+    package_package:
+      - podman
+  roles:
+    - role: firewall
+      vars:
+        firewalld_port:
+          - 8080/tcp
+          - 8443/tcp
+  tasks:
+    - name: Install podman
+      ansible.builtin.include_tasks:
+        file: package.yml
+    - name: Include vars
+      loop: 
+        - redhat.vault
+        - httpd.vault
+      ansible.builtin.include_vars:
+        file: "vault/{{ item }}"
+    
+    - name: Create httpd user
+      ansible.builtin.user:
+        name: "{{ httpd_username }}"
+        password: "{{ httpd_password }}"
+        state: present
+    
+    - name: Copy ssh key
+      ansible.posix.authorized_key:
+        user: "{{ httpd_username }}"
+        key: "{{ lookup('file','./id_rsa.pub') }}"
+    - name: Create httpd user podman dir
+      ansible.builtin.file:
+        state: directory
+        owner: "{{ httpd_username }}"
+        group: "{{ httpd_username }}"
+        path: "/home/{{ httpd_username }}/podman/httpd"
+        setype: container_file_t
+    
+    - name: Set sefcontext
+      community.general.sefcontext:
+        target: "/home/{{ httpd_username }}/podamn(/.*)?"
+        setype: container_file_t
+        reload: true
+
+    - name: Create httpd index page
+      ansible.builtin.template:
+        src: index_podman.jn2
+        dest: "/home/{{ httpd_username }}/podman/httpd/index.html"
+        owner: "{{ httpd_username }}"
+        group: "{{ httpd_username }}"
+
+
+    - name: User container block
+      remote_user: "{{ httpd_username }}"
+      become: false
+      block:  
+        - name: Redhat login
+          loop:
+            - registry.redhat.io
+            - registry.access.redhat.com
+          containers.podman.podman_login:
+            username: "{{ redhat_username }}"
+            password: "{{ redhat_password }}"
+            registry: "{{ item }}"
+            
+        - name: Podman unshare
+          shell:
+            "podman unshare chown -R 48:48 /home/{{httpd_username }}/podman/httpd"
+        
+        - name: Start container
+          containers.podman.podman_container:
+            image: registry.redhat.io/rhel9/httpd-24
+            name: httpd
+            detach: true
+            expose: 
+              - 8443
+              - 8080
+            publish: 
+              - 8080:8080
+              - 8443:8443
+            generate_systemd:
+              names: true
+              path: "/home/{{ httpd_username }}/.config/systemd/user"
+            volume: "/home/{{ httpd_username }}/podman/httpd:/var/www/html:Z"
+            state: started
+
+        - name: User enable systemd
+          shell:
+            systemctl --uesr daemon-reload ;systemctl --user enable container-httpd.service
+    - name: enable linger
+      shell:
+        "loginctl enable-linger {{ httpd_username }}"
+    
+  handlers:
+
+- name: Check connection 
+  hosts: web
+  become: false
+  tasks:
+    - name: Check connection
+      loop:
+        - http://192.168.1.221:8080
+        - https://192.168.1.221:8443
+        - http://192.168.1.222:8080
+        - https://192.168.1.222:8443
+      ansible.builtin.uri:
+        url: "{{ item }}"
+        status_code: 200
+        validate_certs: false
+      register: result
+    - name: Debug
+      ansible.builtin.debug:
+        var: result
+        
+...
