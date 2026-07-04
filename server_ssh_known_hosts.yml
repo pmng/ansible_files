@@ -1,0 +1,32 @@
+---
+- name: Setup ssh public host keys
+  hosts: all
+  become: true
+  vars:
+  roles:
+  tasks:
+    - name: get ssh rsa key
+      ansible.builtin.slurp:
+        src: /etc/ssh/ssh_host_rsa_key.pub
+      register: rsa_key
+
+    - name: get ssh ed key
+      ansible.builtin.slurp:
+        src: /etc/ssh/ssh_host_ed25519_key.pub
+      register: ed_key
+
+    - name: setup
+      with_nested:
+        - "{{ ansible_play_hosts }}"
+        - ['rsa_key', 'ed_key']
+      ansible.builtin.known_hosts:
+        path: /home/ansible/ssh_known_hosts
+        name: "{{ item[0] }}"
+        state: present
+        key: >
+          {{ hostvars[item[0]]['ansible_facts']['fqdn'] }},{{ item[0] }} 
+          {% if item[1] == 'rsa_key' %}ssh-rsa{% else %}ssh-ed25519{% endif %}
+          {{ hostvars[item[0]][item[1]].get('content')  | b64decode | trim }}
+    
+  handlers:
+...
