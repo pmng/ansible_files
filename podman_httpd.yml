@@ -87,10 +87,16 @@
               path: "/home/{{ httpd_username }}/.config/systemd/user"
             volume: "/home/{{ httpd_username }}/podman/httpd:/var/www/html:Z"
             state: started
-
-        - name: User enable systemd
-          shell:
-            systemctl --uesr daemon-reload ;systemctl --user enable container-httpd.service
+        
+        - name: Reload user daemon and enable the service
+          ansible.builtin.systemd_service:
+            daemon-reload: true
+            scope: user
+            name: container-httpd.service
+            enabled: true
+       # - name: User enable systemd
+       #   shell:
+       #     systemctl --uesr daemon-reload ;systemctl --user enable container-httpd.service
     - name: enable linger
       shell:
         "loginctl enable-linger {{ httpd_username }}"

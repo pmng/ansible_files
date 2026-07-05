@@ -1,6 +1,6 @@
 ---
 - name: Setup podman mysql
-  hosts: db
+  hosts: "{{ my_group | default('db') }}"
   become: true
   vars:
     package_package:
@@ -83,8 +83,12 @@
               path: "/home/{{ db_username }}/.config/systemd/user"
         
         - name: Enable user systemd 
-          ansible.builtin.shell:
-            systemctl --user daemon-reload; systemctl --user enable container-mariadb.service
+          ansible.builtin.systemd_service:
+            daemon-reload: true
+            scope: user
+            enabled: true
+            name: container-mariadb.service
+
     - name: enable linger
       ansible.builtin.shell:
         "loginctl enable-linger {{ db_username }}"
